@@ -1,0 +1,96 @@
+# =============================================================================
+# INTENTIONALLY VULNERABLE - DEMO SPECIMEN - NEVER EXECUTES (guarded by if: false) - exists so CodeQL has something to analyze
+# =============================================================================
+#
+# SPECIMEN 04 - The query that was REMOVED in CodeQL 2.26.3
+# Previously flagged by: codeql.actions.security.SelfHostedQuery
+#
+# ***** EXPECTED RESULT: NO ALERT *****
+# ***** This query was REMOVED in CodeQL 2.26.3 *****
+#
+# THIS IS THE BREAKING CHANGE IN 2.26.3.
+#   `codeql.actions.security.SelfHostedQuery` used to flag workflows that ran
+#   on self-hosted runners in combination with risky triggers. That query has
+#   been REMOVED from the product. It no longer exists, so it can no longer
+#   produce alerts.
+#
+# WHY DXC SHOULD CARE - THIS IS THE PRACTICAL IMPACT:
+#   Anything that REFERENCED that query ID is now dangling. Specifically check:
+#     * `.github/codeql/codeql-config.yml` files that list the query in
+#       `query-filters` (include/exclude by id).
+#     * Dismissal / suppression rules keyed on the query ID.
+#     * Dashboards, SARIF post-processing, or compliance reports that count
+#       alerts by rule ID.
+#     * Any automation that asserted "this query must be enabled".
+#   None of these will error loudly. They will simply stop matching, and a
+#   control you believed was in place silently reports zero.
+#
+#   ALSO NOTE: the risk itself did not go away. Self-hosted runners on
+#   fork-triggered workflows are still dangerous. GitHub removed the QUERY,
+#   not the hazard. Coverage of this pattern now needs to come from your own
+#   policy or a custom query.
+#
+# SAFETY: Every job below carries `if: ${{ false }}`. This workflow can never
+#         run. It is a specimen only.
+# =============================================================================
+
+name: "VULN 04 - Self-hosted runner, expected CLEAN (SPECIMEN - NEVER RUNS)"
+
+on:
+  # The fork-capable trigger is part of the pattern the removed query used to
+  # look for. Left intact so the "before vs after" comparison is honest.
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-on-self-hosted:
+    name: Build on a self-hosted runner (SPECIMEN - expected clean)
+    runs-on: self-hosted
+    # ---- SAFETY GUARD - NEVER REMOVE -------------------------------------
+    if: ${{ false }}
+    # ----------------------------------------------------------------------
+
+    steps:
+      - name: Checkout PR head on a self-hosted runner
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Build
+        run: |
+          echo "Building on a self-hosted runner from a fork-triggered event."
+          echo "Runner name : $RUNNER_NAME"
+          echo "Runner OS   : $RUNNER_OS"
+          make build
+
+      - name: Explain the expected result
+        run: |
+          echo "EXPECTED RESULT: no alert for this file."
+          echo "codeql.actions.security.SelfHostedQuery was REMOVED in 2.26.3."
+          echo ""
+          echo "Audit action for DXC: grep your org for the string"
+          echo "  codeql.actions.security.SelfHostedQuery"
+          echo "in codeql-config.yml files, suppressions and dashboards."
+
+  deploy-on-self-hosted:
+    name: Deploy from a self-hosted runner (SPECIMEN - expected clean)
+    runs-on: [self-hosted, linux, x64]
+    # ---- SAFETY GUARD - NEVER REMOVE -------------------------------------
+    if: ${{ false }}
+    # ----------------------------------------------------------------------
+
+    needs: build-on-self-hosted
+
+    steps:
+      - name: Deploy
+        env:
+          DEPLOY_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Deploying from a self-hosted runner with secrets in scope."
+          ./scripts/deploy.sh

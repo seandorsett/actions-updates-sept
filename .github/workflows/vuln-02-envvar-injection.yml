@@ -1,0 +1,80 @@
+# =============================================================================
+# INTENTIONALLY VULNERABLE - DEMO SPECIMEN - NEVER EXECUTES (guarded by if: false) - exists so CodeQL has something to analyze
+# =============================================================================
+#
+# SPECIMEN 02 - Environment variable injection
+# Target query: actions/envvar-injection/critical
+# EXPECTED RESULT: CodeQL SHOULD RAISE AN ALERT for this file.
+#
+# WHY THIS IS DANGEROUS (the real-world pattern):
+#   `github.event.issue.title` is fully attacker-controlled - anyone who can
+#   open an issue controls it. Writing it unquoted into `$GITHUB_ENV` lets an
+#   attacker inject ADDITIONAL environment variables by embedding a newline in
+#   the issue title. Classic payloads overwrite things like `PATH`,
+#   `NODE_OPTIONS` or `LD_PRELOAD`, which turns into arbitrary code execution
+#   in a later step. Because the `issues` trigger is PRIVILEGED (it runs on the
+#   base repo with a write token and secrets in scope), the impact is critical.
+#
+# WHAT'S NEW IN CodeQL 2.26.3 - THIS IS THE THING TO SHOW ON SCREEN:
+#   `envvar-injection/critical` now requires BOTH an untrusted source AND a
+#   privileged context ORIGINATING FROM THE SAME TRIGGER before it will rate
+#   the finding critical. Previously a workflow could be flagged critical when
+#   the untrusted data and the privilege came from different triggers - which
+#   produced criticals that were not actually exploitable end to end.
+#   This specimen deliberately satisfies BOTH conditions from the SAME
+#   `issues` trigger, so it still fires at critical severity under 2.26.3.
+#
+# TALKING POINT FOR DXC: if your critical count DROPS after 2.26.3 without
+#   anyone fixing anything, that is this change removing non-exploitable
+#   findings - not a regression in coverage.
+#
+# SAFETY: Every job below carries `if: ${{ false }}`. This workflow can never
+#         run. Do NOT remove that guard, and do NOT sanitise the injection -
+#         the untrusted expression must stay intact or the query stops firing.
+# =============================================================================
+
+name: "VULN 02 - Env var injection (SPECIMEN - NEVER RUNS)"
+
+# `issues` is a privileged trigger: it runs on the base repository with a
+# write-capable token. Combined with the attacker-controlled title below,
+# this is the same-trigger condition that 2.26.3 now requires.
+on:
+  issues:
+    types:
+      - opened
+      - edited
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  triage-issue:
+    name: Triage incoming issue (SPECIMEN)
+    runs-on: ubuntu-latest
+    # ---- SAFETY GUARD - NEVER REMOVE -------------------------------------
+    if: ${{ false }}
+    # ----------------------------------------------------------------------
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # THE VULNERABILITY: an attacker-controlled value is written straight
+      # into $GITHUB_ENV with no quoting and no delimiter. A newline in the
+      # issue title injects arbitrary additional environment variables.
+      - name: Record issue metadata into the environment
+        run: |
+          echo "ISSUE_TITLE=${{ github.event.issue.title }}" >> $GITHUB_ENV
+          echo "ISSUE_AUTHOR=${{ github.event.issue.user.login }}" >> $GITHUB_ENV
+          echo "ISSUE_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+
+      # THE CONSEQUENCE: a later step consumes the injected environment in a
+      # privileged context that has secrets available.
+      - name: Act on the recorded metadata
+        env:
+          TRIAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triaging issue #${ISSUE_NUMBER} titled '${ISSUE_TITLE}'"
+          echo "Reported by ${ISSUE_AUTHOR}"
+          ./scripts/triage.sh "${ISSUE_TITLE}"

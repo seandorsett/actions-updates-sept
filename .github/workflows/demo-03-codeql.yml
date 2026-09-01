@@ -1,0 +1,108 @@
+# =============================================================================
+# DEMO 03 - CodeQL 2.26.3 analysis of GitHub Actions workflows
+# Changelog: 2026-08-19
+# =============================================================================
+#
+# WHAT THIS WORKFLOW IS
+# ---------------------
+# A real CodeQL analysis configured for the `actions` language. That is the
+# whole point of this demo: CodeQL is analysing the WORKFLOW FILES in
+# .github/workflows/, not application source code.
+#
+# The specimens it analyses live alongside this file:
+#   vuln-01-untrusted-checkout.yml  -> SHOULD alert (untrusted checkout / cache poisoning)
+#   vuln-02-envvar-injection.yml    -> SHOULD alert (envvar-injection/critical)
+#   vuln-03-jq-output-clean.yml     -> should NOT alert (false positive fixed in 2.26.3)
+#   vuln-04-self-hosted.yml         -> should NOT alert (query REMOVED in 2.26.3)
+#
+# ALL FOUR SPECIMENS ARE PERMANENTLY DISABLED WITH `if: ${{ false }}`.
+# They exist only to give CodeQL something to read. They never execute.
+#
+# WHAT CHANGED IN CodeQL 2.26.3
+# -----------------------------
+#   1. Untrusted data in `merge_group` triggers is now analysed.
+#   2. BREAKING: the query `codeql.actions.security.SelfHostedQuery` was
+#      REMOVED. If you suppressed it, filtered on it, or built a dashboard
+#      around it, that reference is now dead.
+#   3. Fewer false positives from `output-clobbering/high` on simple jq path
+#      filters whose values stay JSON-encoded.
+#   4. Cache-poisoning and untrusted-checkout alert paths now START AT THE
+#      CONTROLLING EXPRESSION rather than deeper in the data flow. Same alert,
+#      much more readable path - this is the best thing to show on screen.
+#   5. `envvar-injection/critical` now requires BOTH an untrusted source AND a
+#      privileged context FROM THE SAME TRIGGER. Fewer noisy criticals.
+#   6. Three cache-poisoning queries now account for the read-only cache change
+#      that shipped in June 2026.
+#
+# ROLLOUT
+#   Auto-deployed to github.com. GitHub Enterprise Server picks it up in a
+#   later GHES release, so GHES customers are NOT on 2.26.3 yet.
+#
+# PREREQUISITE
+#   Code scanning must be ENABLED on this repository, otherwise the upload in
+#   the analyze step fails with a 403.
+#     Settings > Code security > Code scanning > set up
+# =============================================================================
+
+name: "Demo 03 - CodeQL (Actions analysis)"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  # Required to upload the SARIF results to code scanning.
+  security-events: write
+  contents: read
+  # Required for CodeQL to read workflow definitions / run metadata.
+  actions: read
+
+jobs:
+  analyze:
+    name: CodeQL analyze (actions)
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          # `actions` analyses the workflow files themselves. This is the
+          # language that all four vuln-*.yml specimens are written for.
+          - actions
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Uses the default query suite. The 2.26.3 behaviour changes listed
+          # at the top of this file are all in the default suite - no custom
+          # query pack is needed for this demo.
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+      - name: Where to look next
+        if: always()
+        run: |
+          echo "Now open:"
+          echo "  Security > Code scanning"
+          echo "and filter alerts by Tool = CodeQL."
+          echo ""
+          echo "EXPECTED ALERTS:"
+          echo "  vuln-01-untrusted-checkout.yml -> alert present"
+          echo "  vuln-02-envvar-injection.yml   -> alert present"
+          echo ""
+          echo "EXPECTED SILENCE (this is the 2.26.3 story):"
+          echo "  vuln-03-jq-output-clean.yml    -> NO alert (FP fixed)"
+          echo "  vuln-04-self-hosted.yml        -> NO alert (query removed)"

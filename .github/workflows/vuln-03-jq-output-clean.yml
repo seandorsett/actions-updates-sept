@@ -1,0 +1,98 @@
+# =============================================================================
+# INTENTIONALLY VULNERABLE - DEMO SPECIMEN - NEVER EXECUTES (guarded by if: false) - exists so CodeQL has something to analyze
+# =============================================================================
+#
+# SPECIMEN 03 - The FALSE POSITIVE that CodeQL 2.26.3 FIXED
+# Previously flagged by: actions/output-clobbering/high
+#
+# ***** EXPECTED RESULT: NO ALERT IN 2.26.3 *****
+# ***** Previously flagged by output-clobbering/high *****
+#
+# THIS FILE IS THE "SILENCE" HALF OF THE DEMO. Do not be surprised when
+# nothing shows up in the Security tab for it - that IS the result.
+#
+# WHY THIS USED TO BE FLAGGED
+#   `output-clobbering/high` looks for a value flowing into `$GITHUB_OUTPUT`
+#   where an attacker could inject a newline and thereby define or overwrite
+#   additional step outputs ("clobbering"). Any `jq` result heading for
+#   `$GITHUB_OUTPUT` used to look like a candidate.
+#
+# WHY IT IS NO LONGER FLAGGED IN 2.26.3
+#   These are SIMPLE PATH FILTERS (`jq '.field'`, no `-r` / `--raw-output`),
+#   so the value STAYS JSON-ENCODED. A JSON-encoded string cannot contain a
+#   literal newline - a newline is emitted as the two characters \ and n, and
+#   the surrounding double quotes are preserved. There is therefore no way to
+#   break out of the line and clobber another output. 2.26.3 now recognises
+#   that shape and stays quiet.
+#
+#   CONTRAST TO CALL OUT LIVE: adding `-r` to any of the jq calls below would
+#   strip the quotes, un-encode the value, and make the alert legitimate again.
+#   The distinction 2.26.3 learned is exactly "did the value stay JSON-encoded".
+#
+# SAFETY: Every job below carries `if: ${{ false }}`. This workflow can never
+#         run. The guard is what makes the file safe - the pattern itself is
+#         left exactly as-is so the analysis result is meaningful.
+# =============================================================================
+
+name: "VULN 03 - jq output, expected CLEAN (SPECIMEN - NEVER RUNS)"
+
+on:
+  workflow_dispatch:
+  pull_request_target:
+    types:
+      - opened
+
+permissions:
+  contents: read
+
+jobs:
+  parse-json-metadata:
+    name: Parse JSON metadata with jq (SPECIMEN - expected clean)
+    runs-on: ubuntu-latest
+    # ---- SAFETY GUARD - NEVER REMOVE -------------------------------------
+    if: ${{ false }}
+    # ----------------------------------------------------------------------
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch untrusted metadata
+        id: fetch
+        run: |
+          # Attacker-influenced JSON. In a real workflow this could be a PR
+          # body, an API response, or a file from a fork.
+          cat > metadata.json <<'JSON'
+          {
+            "package": {
+              "name": "demo-package",
+              "version": "1.2.3",
+              "maintainer": "example-user"
+            }
+          }
+          JSON
+
+      # THE PATTERN UNDER TEST.
+      # Note: NO `-r` / `--raw-output`. Every value below stays JSON-encoded,
+      # i.e. it arrives wrapped in double quotes with any newline escaped as
+      # \n. That is precisely why 2.26.3 no longer reports these.
+      - name: Extract fields with simple jq path filters
+        id: extract
+        run: |
+          PKG_NAME=$(jq '.package.name' metadata.json)
+          PKG_VERSION=$(jq '.package.version' metadata.json)
+          PKG_MAINTAINER=$(jq '.package.maintainer' metadata.json)
+
+          echo "package_name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "package_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "package_maintainer=$PKG_MAINTAINER" >> "$GITHUB_OUTPUT"
+
+      - name: Consume the extracted outputs
+        run: |
+          echo "name       : ${{ steps.extract.outputs.package_name }}"
+          echo "version    : ${{ steps.extract.outputs.package_version }}"
+          echo "maintainer : ${{ steps.extract.outputs.package_maintainer }}"
+          echo ""
+          echo "EXPECTED RESULT: no output-clobbering/high alert for this file."
+          echo "The values are still JSON-encoded, so no newline injection is"
+          echo "possible and 2.26.3 correctly stays silent."

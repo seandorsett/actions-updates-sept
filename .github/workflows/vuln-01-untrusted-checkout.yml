@@ -1,0 +1,84 @@
+# =============================================================================
+# INTENTIONALLY VULNERABLE - DEMO SPECIMEN - NEVER EXECUTES (guarded by if: false) - exists so CodeQL has something to analyze
+# =============================================================================
+#
+# SPECIMEN 01 - Untrusted checkout / cache poisoning
+# Target queries: actions/untrusted-checkout-*, actions/cache-poisoning-*
+# EXPECTED RESULT: CodeQL SHOULD RAISE AN ALERT for this file.
+#
+# WHY THIS IS DANGEROUS (the real-world pattern):
+#   `pull_request_target` runs with the BASE repository's permissions and has
+#   access to secrets. Checking out `github.event.pull_request.head.sha` pulls
+#   in code from the FORK, and then executing a build script from that
+#   checkout runs attacker-controlled code in a privileged context. Any
+#   attacker who opens a PR gets your secrets and your write token.
+#
+# WHAT'S NEW IN CodeQL 2.26.3 - THIS IS THE THING TO SHOW ON SCREEN:
+#   The alert PATH now STARTS AT THE CONTROLLING EXPRESSION rather than deeper
+#   in the data flow. Previously the path started somewhere inside the flow and
+#   you had to reason backwards to work out *why* the run was privileged.
+#   Now the first node of the path is the `pull_request_target` trigger /
+#   the head.sha reference that controls it - so the reviewer immediately sees
+#   the root cause instead of a symptom.
+#   Three cache-poisoning queries were also updated to account for the
+#   read-only cache change that shipped in June 2026.
+#
+# SAFETY: Every job below carries `if: ${{ false }}`. This workflow can never
+#         run. Do NOT remove that guard. Do NOT "fix" the vulnerable pattern
+#         either - if the trigger or the untrusted expression is changed, the
+#         query stops firing and the demo shows nothing.
+# =============================================================================
+
+name: "VULN 01 - Untrusted checkout (SPECIMEN - NEVER RUNS)"
+
+# The privileged trigger is half the vulnerability. It must stay.
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-untrusted-pr:
+    name: Build PR code in a privileged context (SPECIMEN)
+    runs-on: ubuntu-latest
+    # ---- SAFETY GUARD - NEVER REMOVE -------------------------------------
+    if: ${{ false }}
+    # ----------------------------------------------------------------------
+
+    steps:
+      # THE VULNERABILITY: checking out the fork's head SHA under
+      # pull_request_target. This is the untrusted checkout.
+      - name: Checkout untrusted PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
+
+      # Restoring a cache in this privileged context is what makes the
+      # cache-poisoning queries fire as well.
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            .build-cache
+          key: build-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+
+      # THE SINK: executing a script that came from the untrusted checkout.
+      - name: Run build script from the untrusted checkout
+        run: |
+          chmod +x ./scripts/build.sh
+          ./scripts/build.sh
+
+      # Secrets are in scope here, which is what makes the impact critical.
+      - name: Publish build result
+        env:
+          DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Publishing artifacts built from untrusted code..."
+          ./scripts/publish.sh

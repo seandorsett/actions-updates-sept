@@ -1,0 +1,137 @@
+# =============================================================================
+# DEMO 01 - Actions retention now covers checks, workflow runs and statuses
+# Changelog: 2026-08-27  |  Effective: 2026-10-01
+# =============================================================================
+#
+# WHAT THIS DEMO SHOWS
+# --------------------
+# Before Oct 1 2026, check runs, workflow runs and commit statuses were kept
+# for 400+ days regardless of your Actions retention setting. From Oct 1 2026
+# they follow the SAME Actions retention setting as artifacts and logs
+# (default 90 days).
+#
+# The repository / organization setting has been RENAMED to:
+#   "Check, workflow run, status, artifact and log retention"
+#   (Settings > Actions > General > Artifact and log retention)
+#
+# This workflow deliberately produces ONE OF EACH data type that the renamed
+# setting now governs, so the presenter can point at each one on screen and
+# then switch to the setting page:
+#
+#   (a) BUILD ARTIFACT  -> uploaded below with an explicit retention-days input
+#   (b) COMMIT STATUS   -> created below via rest.repos.createCommitStatus
+#   (c) LOG OUTPUT      -> the echo steps below produce the run log
+#   (d) THE WORKFLOW RUN ITSELF and its CHECK RUN -> created just by dispatching
+#
+# IMPORTANT FACTS TO STATE OUT LOUD
+#   * NOT retroactive. Only data created AFTER Oct 1 2026 is affected.
+#     Anything already sitting in the repo keeps its old lifetime.
+#   * Existing retention caps still apply. PUBLIC repositories max out at
+#     90 days; you cannot raise a public repo above that.
+#   * This metadata is NOT billed. Retention here is about data lifetime and
+#     API/UI availability, not about storage cost.
+# =============================================================================
+
+name: "Demo 01 - Retention (checks / runs / statuses)"
+
+# workflow_dispatch ONLY. We never want this firing on push during a live talk.
+on:
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: "Artifact retention in days (capped by the repo/org setting)"
+        required: false
+        default: "7"
+        type: string
+
+permissions:
+  contents: read
+  # statuses: write is required for rest.repos.createCommitStatus below.
+  statuses: write
+
+jobs:
+  produce-retained-data:
+    name: Produce retained data (artifact + status + logs)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------------
+      # (c) LOG OUTPUT - governed by the renamed retention setting.
+      # ---------------------------------------------------------------------
+      - name: Emit log output to point at
+        run: |
+          echo "=================================================="
+          echo " DEMO 01 - Actions retention scope change"
+          echo "=================================================="
+          echo "Repository       : ${{ github.repository }}"
+          echo "Run ID           : ${{ github.run_id }}"
+          echo "Run number       : ${{ github.run_number }}"
+          echo "Commit SHA       : ${{ github.sha }}"
+          echo "Requested by     : ${{ github.actor }}"
+          echo "Retention (days) : ${{ inputs.retention_days }}"
+          echo "--------------------------------------------------"
+          echo "From 2026-10-01 the following all expire together,"
+          echo "governed by ONE setting:"
+          echo "  - this log"
+          echo "  - the artifact uploaded by this run"
+          echo "  - the commit status created by this run"
+          echo "  - this workflow run record"
+          echo "  - the check run attached to the commit"
+          echo "=================================================="
+
+      # ---------------------------------------------------------------------
+      # (a) BUILD ARTIFACT - the classic case, already governed before Oct 1.
+      #     Included so the audience sees old + new behaviour side by side.
+      # ---------------------------------------------------------------------
+      - name: Create a build artifact
+        run: |
+          mkdir -p build-output
+          {
+            echo "Demo 01 build output"
+            echo "Generated at : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "Run ID       : ${{ github.run_id }}"
+            echo "Commit       : ${{ github.sha }}"
+            echo "Retention    : ${{ inputs.retention_days }} day(s)"
+          } > build-output/build-info.txt
+          cat build-output/build-info.txt
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-01-build-output
+          path: build-output/
+          # The dispatch input is wired straight into retention-days so the
+          # presenter can demonstrate that the repo/org cap overrides a value
+          # that is set too high here.
+          retention-days: ${{ inputs.retention_days }}
+
+      # ---------------------------------------------------------------------
+      # (b) COMMIT STATUS - previously kept 400+ days, now follows the setting.
+      #     This is the headline change. Point at this one specifically.
+      # ---------------------------------------------------------------------
+      - name: Create a commit status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result = await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'demo-01/retention-scope',
+              description: 'Status created for the Oct 1 2026 retention demo',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+            core.info(`Created commit status id=${result.data.id} on sha=${context.sha}`);
+            core.info('Before 2026-10-01 this status lived 400+ days.');
+            core.info('After  2026-10-01 it follows the Actions retention setting.');
+
+      - name: Where to look next
+        run: |
+          echo "Now switch to:"
+          echo "  Settings > Actions > General"
+          echo "and show the renamed setting:"
+          echo "  'Check, workflow run, status, artifact and log retention'"

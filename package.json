@@ -1,0 +1,19 @@
+{
+  "name": "actions-office-hour-demos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sample Node project used by the code coverage automatic enablement demo (Demo 04). Deliberately has tests but NO coverage workflow or coverage config.",
+  "main": "src/calculator.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": [
+    "github-actions",
+    "demo",
+    "jest"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

@@ -1,0 +1,106 @@
+# =============================================================================
+# DEMO 05 - More control over hosted runners (runner groups / labels)
+# Changelog: 2026-06-25
+# =============================================================================
+#
+# WHAT CHANGED
+# ------------
+#   * macOS hosted runners can now be placed in RUNNER GROUPS (they could not
+#     before).
+#   * Hosted runners can be SCOPED by organization, by repository, and by
+#     WORKFLOW - not just by org/repo.
+#   * CONCURRENCY LIMITS can be set per runner group, so one team cannot drain
+#     the whole pool.
+#   * DEFAULT LABELS such as `ubuntu-latest` can be DISABLED, forcing everyone
+#     onto your managed labels.
+#
+# AVAILABILITY: Team and Enterprise plans only.
+# LIMITATION  : Network configurations are NOT supported for macOS runners.
+#
+# THE DEMO NARRATIVE (two runs of this same file)
+# -----------------------------------------------
+#   RUN 1 - baseline, before you change anything:
+#       `default-label` picks up ubuntu-latest and succeeds.
+#       `managed-label` may or may not find a runner depending on whether the
+#       dxc-managed group exists - it is continue-on-error so it cannot break
+#       the demo either way.
+#
+#   Then, live on screen, go to:
+#       Organization Settings > Actions > Runner groups > <your group>
+#       and DISABLE the `ubuntu-latest` default label.
+#
+#   RUN 2 - after disabling the default label:
+#       `default-label` now CANNOT FIND A RUNNER. It sits queued / fails to
+#       start. That is the whole point: governance is now enforceable, not
+#       advisory. Nobody can quietly opt out of your managed pool by typing
+#       `runs-on: ubuntu-latest`.
+#
+#       `managed-label` is unaffected because it targets the group-scoped
+#       label array.
+#
+# COST/SAFETY NOTE: workflow_dispatch only. Nothing here runs on push.
+# =============================================================================
+
+name: "Demo 05 - Runner groups and label control"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # THE JOB THAT BREAKS ON PURPOSE (on the second run).
+  # Uses the stock default label. Once `ubuntu-latest` is disabled on the
+  # runner group, this job can no longer be scheduled.
+  # ---------------------------------------------------------------------------
+  default-label:
+    name: Default label (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report which runner served this job
+        run: |
+          echo "=================================================="
+          echo " LABEL REQUESTED : ubuntu-latest (DEFAULT LABEL)"
+          echo "=================================================="
+          echo "runner.name : ${{ runner.name }}"
+          echo "runner.os   : ${{ runner.os }}"
+          echo "runner.arch : ${{ runner.arch }}"
+          echo "hostname    : $(hostname)"
+          echo "--------------------------------------------------"
+          echo "RUN 1 (default label enabled)  : this job SUCCEEDS."
+          echo "RUN 2 (default label disabled) : this job cannot find"
+          echo "a runner and never starts. That is the demo."
+          echo "=================================================="
+
+  # ---------------------------------------------------------------------------
+  # THE JOB THAT KEEPS WORKING.
+  # Targets a group-scoped managed label array. continue-on-error is set so a
+  # missing runner group never kills the live demo.
+  # ---------------------------------------------------------------------------
+  managed-label:
+    name: Managed label ([self-hosted, linux, dxc-managed])
+    runs-on: [self-hosted, linux, dxc-managed]
+    # If the dxc-managed group does not exist in the demo org, this job will
+    # sit queued and eventually fail. continue-on-error keeps the overall run
+    # green so the presenter is not left explaining a red X.
+    continue-on-error: true
+
+    steps:
+      - name: Report which runner served this job
+        run: |
+          echo "=================================================="
+          echo " LABEL REQUESTED : [self-hosted, linux, dxc-managed]"
+          echo "=================================================="
+          echo "runner.name : ${{ runner.name }}"
+          echo "runner.os   : ${{ runner.os }}"
+          echo "runner.arch : ${{ runner.arch }}"
+          echo "hostname    : $(hostname)"
+          echo "--------------------------------------------------"
+          echo "This job targets a MANAGED, group-scoped label."
+          echo "Disabling the ubuntu-latest default label does NOT"
+          echo "affect it. This is the migration target you want"
+          echo "teams on before you turn defaults off."
+          echo "=================================================="

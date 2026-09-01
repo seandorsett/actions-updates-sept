@@ -1,0 +1,155 @@
+# =============================================================================
+# DEMO 02 - Windows 11 arm64 with Visual Studio 2026 is GA
+# Changelog: 2026-08-20
+# =============================================================================
+#
+# !!! BREAKING CHANGE - MIGRATION WINDOW: 2026-09-21 to 2026-09-30 !!!
+# -----------------------------------------------------------------------------
+# A NEW runner label is now generally available:
+#
+#     runs-on: windows-11-vs2026-arm      <-- explicitly Visual Studio 2026
+#
+# The EXISTING label `windows-11-arm` will be MIGRATED to Visual Studio 2026
+# some time between 2026-09-21 and 2026-09-30. If your build depends on
+# Visual Studio 2022 toolsets, MSBuild versions, or VS2022-specific SDK
+# layouts, that build can break WITHOUT ANY CHANGE ON YOUR SIDE.
+#
+# MITIGATION - DO THIS NOW:
+#   Pin to an explicit label instead of relying on the floating one.
+#     * Want VS2026 today and forever?  -> windows-11-vs2026-arm
+#     * Need VS2022 a while longer?     -> pin to the VS2022 arm64 image your
+#                                          org publishes and schedule the
+#                                          upgrade before the window closes.
+#   Auditing tip: grep your org for `windows-11-arm` and treat every hit as a
+#   change-management item with a hard deadline of 2026-09-21.
+# -----------------------------------------------------------------------------
+#
+# THE DEMO ITSELF
+#   Two jobs run the SAME probe against the two labels and print the installed
+#   Visual Studio version.
+#     * BEFORE 2026-09-21 : `legacy-label` prints a VS2022 version and
+#                           `pinned-vs2026` prints a VS2026 version. The two
+#                           numbers differ - THAT is the demo.
+#     * AFTER  2026-09-30 : both print VS2026. The difference disappears,
+#                           which is exactly the silent migration being warned
+#                           about.
+#
+# COST NOTE: Windows arm64 hosted runners are paid / limited minutes.
+#            This workflow is workflow_dispatch ONLY - never on push.
+# =============================================================================
+
+name: "Demo 02 - Windows 11 arm64 + Visual Studio 2026"
+
+# workflow_dispatch ONLY - these runners are billable and capacity-limited.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # PINNED: explicitly asks for Visual Studio 2026. This is the safe choice and
+  # its behaviour does NOT change during the Sept 21-30 migration window.
+  # ---------------------------------------------------------------------------
+  pinned-vs2026:
+    name: Pinned label (windows-11-vs2026-arm)
+    runs-on: windows-11-vs2026-arm
+
+    steps:
+      - name: Report runner label and architecture
+        shell: pwsh
+        run: |
+          Write-Host "=================================================="
+          Write-Host " LABEL REQUESTED : windows-11-vs2026-arm (PINNED)"
+          Write-Host "=================================================="
+          Write-Host "Runner name  : $env:RUNNER_NAME"
+          Write-Host "Runner OS    : $env:RUNNER_OS"
+          Write-Host "Runner arch  : $env:RUNNER_ARCH"
+          Write-Host "PROCESSOR_ARCHITECTURE : $env:PROCESSOR_ARCHITECTURE"
+          Write-Host "OS version   : $([System.Environment]::OSVersion.VersionString)"
+
+      - name: Print installed Visual Studio version
+        shell: pwsh
+        run: |
+          $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $version = & $vswhere -latest -property catalog_productDisplayVersion
+            $name    = & $vswhere -latest -property displayName
+            Write-Host "--------------------------------------------------"
+            Write-Host " Visual Studio (via vswhere)"
+            Write-Host "--------------------------------------------------"
+            Write-Host "displayName                  : $name"
+            Write-Host "catalog_productDisplayVersion: $version"
+            Write-Host "--------------------------------------------------"
+            Write-Host "EXPECTED: a Visual Studio 2026 version. This label is"
+            Write-Host "pinned, so this value is stable across the Sept 21-30"
+            Write-Host "migration window."
+          } else {
+            Write-Host "vswhere.exe was not found at the expected path:"
+            Write-Host "  $vswhere"
+            Write-Host "Visual Studio may not be installed on this image."
+            exit 1
+          }
+
+  # ---------------------------------------------------------------------------
+  # LEGACY: the floating label that is being migrated. continue-on-error is set
+  # so a capacity failure or an image change never kills the live demo.
+  #
+  # WHAT TO NARRATE WHEN THIS JOB FINISHES:
+  #   * Run BEFORE 2026-09-21 -> this prints a VS2022 version. Compare it with
+  #     the pinned job above and point out that they differ today.
+  #   * Run AFTER  2026-09-30 -> this prints a VS2026 version. Nothing in this
+  #     file changed. Nothing in the repo changed. The runner image changed
+  #     underneath the workflow. THAT is the breaking change.
+  # ---------------------------------------------------------------------------
+  legacy-label:
+    name: Legacy label (windows-11-arm) - migrates Sept 21-30
+    runs-on: windows-11-arm
+    # Never fail the whole run because of the legacy label. This job exists to
+    # be OBSERVED, not to gate anything.
+    continue-on-error: true
+
+    steps:
+      - name: Report runner label and architecture
+        shell: pwsh
+        run: |
+          Write-Host "=================================================="
+          Write-Host " LABEL REQUESTED : windows-11-arm (LEGACY/FLOATING)"
+          Write-Host "=================================================="
+          Write-Host "Runner name  : $env:RUNNER_NAME"
+          Write-Host "Runner OS    : $env:RUNNER_OS"
+          Write-Host "Runner arch  : $env:RUNNER_ARCH"
+          Write-Host "PROCESSOR_ARCHITECTURE : $env:PROCESSOR_ARCHITECTURE"
+          Write-Host "OS version   : $([System.Environment]::OSVersion.VersionString)"
+
+      - name: Print installed Visual Studio version
+        shell: pwsh
+        run: |
+          $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $version = & $vswhere -latest -property catalog_productDisplayVersion
+            $name    = & $vswhere -latest -property displayName
+            Write-Host "--------------------------------------------------"
+            Write-Host " Visual Studio (via vswhere)"
+            Write-Host "--------------------------------------------------"
+            Write-Host "displayName                  : $name"
+            Write-Host "catalog_productDisplayVersion: $version"
+            Write-Host "--------------------------------------------------"
+            Write-Host "BEFORE 2026-09-21 : expect a Visual Studio 2022 version."
+            Write-Host "AFTER  2026-09-30 : expect a Visual Studio 2026 version."
+            Write-Host "The workflow file did not change. The image did."
+          } else {
+            Write-Host "vswhere.exe was not found at the expected path:"
+            Write-Host "  $vswhere"
+            Write-Host "Visual Studio may not be installed on this image."
+            exit 1
+          }
+
+      - name: Migration reminder
+        shell: pwsh
+        run: |
+          Write-Host "ACTION FOR DXC:"
+          Write-Host "  Search every repo for 'windows-11-arm' and pin it to"
+          Write-Host "  'windows-11-vs2026-arm' (or an explicit VS2022 image)"
+          Write-Host "  BEFORE 2026-09-21."
